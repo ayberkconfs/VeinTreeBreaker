@@ -21,3 +21,5 @@ out/
 
 .DS_Store
 Thumbs.db
+
+gradle-8.10.2/

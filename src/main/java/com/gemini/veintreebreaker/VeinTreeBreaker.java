@@ -38,7 +38,7 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
     // --- SETTINGS ---
     private boolean treesEnabled, veinsEnabled;
     private int treeMaxBlocks, veinMaxBlocks;
-    private boolean treeReplant, treeBreakLeaves;
+    private boolean treeReplant, treeBreakLeaves, treeRequireLeaves;
     private int treeLeafRadius;
     private int treeDelay, treeSpeed, veinDelay, veinSpeed;
     private boolean treeSound, treeParticles, veinSound, veinParticles;
@@ -169,6 +169,7 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
         treesEnabled = config.getBoolean("trees.enabled");
         treeMaxBlocks = config.getInt("trees.max-blocks");
         treeReplant = config.getBoolean("trees.auto-replant");
+        treeRequireLeaves = config.getBoolean("trees.require-leaves", true);
         treeBreakLeaves = config.getBoolean("trees.break-leaves");
         treeLeafRadius = config.getInt("trees.leaf-radius");
         treeDelay = config.getInt("trees.animation.delay-ticks");
@@ -255,12 +256,17 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
 
         List<Block> connectedBlocks = findConnected(startBlock, startType, isTree);
         
-        if (isTree && treeBreakLeaves) {
+        if (isTree) {
             Set<Block> foundLeaves = new HashSet<>();
             for (Block log : connectedBlocks) {
                 findLeavesAround(log, foundLeaves);
             }
-            connectedBlocks.addAll(foundLeaves);
+            
+            if (treeRequireLeaves && foundLeaves.isEmpty()) return;
+            
+            if (treeBreakLeaves) {
+                connectedBlocks.addAll(foundLeaves);
+            }
         }
 
         connectedBlocks.remove(startBlock);

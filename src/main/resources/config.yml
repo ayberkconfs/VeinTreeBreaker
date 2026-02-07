@@ -31,6 +31,7 @@ trees:
   enabled: true
   max-blocks: 2500
   auto-replant: true
+  require-leaves: true
   break-leaves: true
   leaf-radius: 3
 
