@@ -17,11 +17,21 @@ import java.nio.file.StandardCopyOption;
 public class UpdateManager {
 
     private final VeinTreeBreaker plugin;
-    // Modrinth proje ID'si veya Slug'ı (URL'deki isim)
     private final String PROJECT_SLUG = "veintreebreaker"; 
+    
+    private String latestVersionNumber = null;
+    private boolean updateAvailable = false;
 
     public UpdateManager(VeinTreeBreaker plugin) {
         this.plugin = plugin;
+    }
+
+    public boolean isUpdateAvailable() {
+        return updateAvailable;
+    }
+
+    public String getLatestVersion() {
+        return latestVersionNumber;
     }
 
     public void checkForUpdate(CommandSender sender, boolean silent) {
@@ -44,14 +54,17 @@ public class UpdateManager {
                     if (versions.size() > 0) {
                         JsonObject latestVersion = versions.get(0).getAsJsonObject();
                         String versionNumber = latestVersion.get("version_number").getAsString();
+                        this.latestVersionNumber = versionNumber;
                         
                         // Versiyon kontrolü
                         if (!versionNumber.equalsIgnoreCase(plugin.getDescription().getVersion())) {
+                            this.updateAvailable = true;
                             if (!silent) sender.sendMessage(plugin.getLanguageManager().getMessage("update-found").replace("%version%", versionNumber));
                             else plugin.getLogger().info("A new update is available: v" + versionNumber);
                             
                             downloadUpdate(sender, latestVersion, silent);
                         } else {
+                            this.updateAvailable = false;
                             if (!silent) sender.sendMessage(plugin.getLanguageManager().getMessage("update-latest"));
                         }
                     }

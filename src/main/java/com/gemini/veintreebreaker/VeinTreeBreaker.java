@@ -281,8 +281,19 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
 
     @EventHandler
     public void onJoin(org.bukkit.event.player.PlayerJoinEvent event) {
+        Player player = event.getPlayer();
         if (autoPickup) {
-            autoPickupPlayers.add(event.getPlayer().getUniqueId());
+            autoPickupPlayers.add(player.getUniqueId());
+        }
+        
+        // Adminlere güncelleme bildirimi
+        if (player.hasPermission("veintreebreaker.admin") && updateManager.isUpdateAvailable()) {
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    player.sendMessage(languageManager.getMessage("update-found").replace("%version%", updateManager.getLatestVersion()));
+                }
+            }.runTaskLater(this, 40L); // 2 saniye sonra gönder ki chat'te kaybolmasın
         }
     }
 
