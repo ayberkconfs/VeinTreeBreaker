@@ -24,8 +24,8 @@ public class UpdateManager {
         this.plugin = plugin;
     }
 
-    public void checkForUpdate(CommandSender sender) {
-        sender.sendMessage(plugin.getLanguageManager().getMessage("update-checking"));
+    public void checkForUpdate(CommandSender sender, boolean silent) {
+        if (!silent) sender.sendMessage(plugin.getLanguageManager().getMessage("update-checking"));
         
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
@@ -34,6 +34,8 @@ public class UpdateManager {
                 HttpURLConnection connection = (HttpURLConnection) url.openConnection();
                 connection.setRequestMethod("GET");
                 connection.setRequestProperty("User-Agent", "VeinTreeBreaker-Plugin");
+                connection.setConnectTimeout(5000);
+                connection.setReadTimeout(5000);
 
                 if (connection.getResponseCode() == 200) {
                     InputStreamReader reader = new InputStreamReader(connection.getInputStream());
@@ -45,28 +47,30 @@ public class UpdateManager {
                         
                         // Versiyon kontrolü
                         if (!versionNumber.equalsIgnoreCase(plugin.getDescription().getVersion())) {
-                            sender.sendMessage(plugin.getLanguageManager().getMessage("update-found").replace("%version%", versionNumber));
-                            downloadUpdate(sender, latestVersion);
+                            if (!silent) sender.sendMessage(plugin.getLanguageManager().getMessage("update-found").replace("%version%", versionNumber));
+                            else plugin.getLogger().info("A new update is available: v" + versionNumber);
+                            
+                            downloadUpdate(sender, latestVersion, silent);
                         } else {
-                            sender.sendMessage(plugin.getLanguageManager().getMessage("update-latest"));
+                            if (!silent) sender.sendMessage(plugin.getLanguageManager().getMessage("update-latest"));
                         }
                     }
                 } else {
                     plugin.getLogger().warning("Modrinth API Error Code: " + connection.getResponseCode());
-                    sender.sendMessage(plugin.getLanguageManager().getMessage("update-error"));
+                    if (!silent) sender.sendMessage(plugin.getLanguageManager().getMessage("update-error"));
                 }
             } catch (Exception e) {
-                e.printStackTrace();
-                sender.sendMessage(plugin.getLanguageManager().getMessage("update-error"));
+                plugin.getLogger().log(java.util.logging.Level.SEVERE, "Error checking for updates: " + e.getMessage());
+                if (!silent) sender.sendMessage(plugin.getLanguageManager().getMessage("update-error"));
             }
         });
     }
 
-    private void downloadUpdate(CommandSender sender, JsonObject versionData) {
+    private void downloadUpdate(CommandSender sender, JsonObject versionData, boolean silent) {
         try {
             JsonArray files = versionData.getAsJsonArray("files");
             if (files.size() == 0) {
-                 sender.sendMessage(plugin.getLanguageManager().getMessage("update-error"));
+                 if (!silent) sender.sendMessage(plugin.getLanguageManager().getMessage("update-error"));
                  return;
             }
             
@@ -75,7 +79,10 @@ public class UpdateManager {
             String downloadUrl = primaryFile.get("url").getAsString();
             
             URL url = new URL(downloadUrl);
-            try (InputStream in = url.openStream()) {
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestProperty("User-Agent", "VeinTreeBreaker-Plugin");
+            
+            try (InputStream in = connection.getInputStream()) {
                 File updateFolder = new File(plugin.getDataFolder().getParentFile(), "update"); // plugins/update
                 if (!updateFolder.exists()) updateFolder.mkdirs();
                 
@@ -84,12 +91,13 @@ public class UpdateManager {
 
                 Files.copy(in, newJar.toPath(), StandardCopyOption.REPLACE_EXISTING);
                 
-                sender.sendMessage(plugin.getLanguageManager().getMessage("update-downloaded"));
+                if (!silent) sender.sendMessage(plugin.getLanguageManager().getMessage("update-downloaded"));
+                else plugin.getLogger().info("Update downloaded to plugins/update folder. Restart to apply.");
             }
             
         } catch (Exception e) {
-            e.printStackTrace();
-            sender.sendMessage(plugin.getLanguageManager().getMessage("update-fail"));
+            plugin.getLogger().log(java.util.logging.Level.SEVERE, "Error downloading update: " + e.getMessage());
+            if (!silent) sender.sendMessage(plugin.getLanguageManager().getMessage("update-fail"));
         }
     }
 }

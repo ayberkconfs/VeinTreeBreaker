@@ -4,16 +4,17 @@ plugins {
 }
 
 group = 'com.gemini'
-version = '1.1-SNAPSHOT'
+version = '1.2'
 
 modrinth {
     token = System.getenv("MODRINTH_TOKEN")
     projectId = "veintreebreaker"
     versionNumber = version
-    versionType = "alpha" 
+    versionType = "release" 
     uploadFile = tasks.jar 
-    gameVersions = ["1.21.1"] 
+    gameVersions = ["1.21", "1.21.1"] 
     loaders = ["paper", "spigot", "bukkit"]
+    changelog = "## VeinTreeBreaker v1.2\n\n- **Auto-Update:** Plugin artık başlangıçta güncellemeleri kontrol eder.\n- **Auto-Pickup:** Eşyalar ve XP'ler direkt envanterinize gelir.\n- **Status Preview:** /vtb menüsünde özelliklerin açık/kapalı durumu gözükür.\n- **Bug Fixes:** Modrinth API bağlantı hataları giderildi."
 }
 
 repositories {

@@ -7,5 +7,5 @@ description: A plugin to break entire trees and ore veins with Shift+Left Click.
 commands:
   veintreebreaker:
     description: Main command for VeinTreeBreaker
-    usage: /veintreebreaker <reload|toggle>
+    usage: /veintreebreaker <reload|toggle|autopickup>
     aliases: [vtb]

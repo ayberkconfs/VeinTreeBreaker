@@ -31,6 +31,7 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
     private final Set<Material> ALLOWED_AXES = new HashSet<>();
     private final Set<Material> ALLOWED_PICKAXES = new HashSet<>();
     private final Set<UUID> disabledPlayers = new HashSet<>();
+    private final Set<UUID> autoPickupPlayers = new HashSet<>();
     
     private LanguageManager languageManager;
     private UpdateManager updateManager;
@@ -43,8 +44,9 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
     private int treeDelay, treeSpeed, veinDelay, veinSpeed;
     private boolean treeSound, treeParticles, veinSound, veinParticles;
     private String treeFinishSound, veinFinishSound;
-    private boolean stopAtLava; // NEW
-    
+    private boolean stopAtLava;
+    private boolean autoUpdate; // NEW
+
     private boolean requireSneak, allowCreative;
     private boolean defaultToggleState;
     private boolean autoPickup;
@@ -69,6 +71,17 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
         getCommand("veintreebreaker").setExecutor(this);
         
         getLogger().info(languageManager.getRawMessage("plugin-enabled").replace("%version%", getDescription().getVersion()));
+
+        if (autoUpdate) {
+            updateManager.checkForUpdate(getServer().getConsoleSender(), true);
+        }
+        
+        // Online olanları ekle (reload durumunda)
+        if (autoPickup) {
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                autoPickupPlayers.add(p.getUniqueId());
+            }
+        }
     }
 
     public LanguageManager getLanguageManager() {
@@ -109,7 +122,7 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
                 sender.sendMessage(languageManager.getMessage("no-permission"));
                 return true;
             }
-            updateManager.checkForUpdate(sender);
+            updateManager.checkForUpdate(sender, false);
             return true;
         }
         
@@ -130,6 +143,28 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
             return true;
         }
 
+        if (sub.equals("autopickup")) {
+            if (!(sender instanceof Player)) {
+                sender.sendMessage(languageManager.getMessage("only-players"));
+                return true;
+            }
+            Player player = (Player) sender;
+            UUID uuid = player.getUniqueId();
+            
+            boolean newState;
+            if (autoPickupPlayers.contains(uuid)) {
+                autoPickupPlayers.remove(uuid);
+                newState = false;
+            } else {
+                autoPickupPlayers.add(uuid);
+                newState = true;
+            }
+            
+            String msgKey = newState ? "autopickup-toggle-on" : "autopickup-toggle-off";
+            sender.sendMessage(languageManager.getMessage(msgKey));
+            return true;
+        }
+
         sendHelp(sender);
         return true;
     }
@@ -137,7 +172,20 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
     private void sendHelp(CommandSender sender) {
         sender.sendMessage(ChatColor.translateAlternateColorCodes('&', "&8&m      &r &2&lVeinTreeBreaker &8&m      "));
         sender.sendMessage("");
-        sender.sendMessage(ChatColor.translateAlternateColorCodes('&', "  &e/vtb toggle &8» &7Özelliği açar/kapatır."));
+
+        String toggleStatus = "";
+        String pickupStatus = "";
+
+        if (sender instanceof Player) {
+            Player p = (Player) sender;
+            // disabledPlayers içinde varsa KAPALI, yoksa AÇIK
+            toggleStatus = disabledPlayers.contains(p.getUniqueId()) ? " &8(&cKAPALI&8)" : " &8(&aAÇIK&8)";
+            // autoPickupPlayers içinde varsa AÇIK, yoksa KAPALI
+            pickupStatus = autoPickupPlayers.contains(p.getUniqueId()) ? " &8(&aAÇIK&8)" : " &8(&cKAPALI&8)";
+        }
+
+        sender.sendMessage(ChatColor.translateAlternateColorCodes('&', "  &e/vtb toggle &8» &7Özelliği açar/kapatır." + toggleStatus));
+        sender.sendMessage(ChatColor.translateAlternateColorCodes('&', "  &e/vtb autopickup &8» &7Yerden toplamayı açar/kapatır." + pickupStatus));
         sender.sendMessage(ChatColor.translateAlternateColorCodes('&', "  &e/vtb help &8» &7Bu menüyü gösterir."));
         
         if (sender.hasPermission("veintreebreaker.admin")) {
@@ -157,6 +205,7 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
         allowCreative = config.getBoolean("settings.allow-creative");
         defaultToggleState = config.getBoolean("settings.default-toggle-state");
         autoPickup = config.getBoolean("settings.auto-pickup", false);
+        autoUpdate = config.getBoolean("settings.auto-update", true);
         allowedWorlds = config.getStringList("settings.allowed-worlds");
 
         durabilityEnabled = config.getBoolean("gameplay.durability.enabled");
@@ -230,6 +279,13 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
         }
     }
 
+    @EventHandler
+    public void onJoin(org.bukkit.event.player.PlayerJoinEvent event) {
+        if (autoPickup) {
+            autoPickupPlayers.add(event.getPlayer().getUniqueId());
+        }
+    }
+
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         Player player = event.getPlayer();
@@ -254,6 +310,8 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
 
         if (event.isCancelled()) return;
 
+        boolean playerAutoPickup = autoPickupPlayers.contains(player.getUniqueId());
+
         List<Block> connectedBlocks = findConnected(startBlock, startType, isTree);
         
         if (isTree) {
@@ -269,16 +327,33 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
             }
         }
 
+        if (playerAutoPickup) {
+            event.setDropItems(false);
+            for (ItemStack drop : startBlock.getDrops(tool, player)) {
+                Map<Integer, ItemStack> left = player.getInventory().addItem(drop);
+                for (ItemStack l : left.values()) {
+                    player.getWorld().dropItemNaturally(player.getLocation(), l);
+                }
+            }
+            // XP Ver
+            if (isVein) {
+                int exp = getExpAmount(startType);
+                if (exp > 0 && (tool == null || tool.getEnchantmentLevel(org.bukkit.enchantments.Enchantment.SILK_TOUCH) == 0)) {
+                    player.giveExp(exp);
+                }
+            }
+        }
+
         connectedBlocks.remove(startBlock);
         if (connectedBlocks.isEmpty()) return;
 
         if (isTree) {
             if (treeReplant) handleReplant(startBlock, startType);
             connectedBlocks.sort(Comparator.comparingInt(Block::getY).thenComparingDouble(b -> b.getLocation().distanceSquared(startBlock.getLocation())));
-            animateSequentialBreak(player, connectedBlocks, tool, treeDelay, treeSpeed, treeSound, treeParticles, true); 
+            animateSequentialBreak(player, connectedBlocks, tool, treeDelay, treeSpeed, treeSound, treeParticles, true, playerAutoPickup); 
         } else {
             connectedBlocks.sort(Comparator.comparingDouble(b -> b.getLocation().distanceSquared(startBlock.getLocation())));
-            animateSequentialBreak(player, connectedBlocks, tool, veinDelay, veinSpeed, veinSound, veinParticles, false);
+            animateSequentialBreak(player, connectedBlocks, tool, veinDelay, veinSpeed, veinSound, veinParticles, false, playerAutoPickup);
         }
     }
 
@@ -340,7 +415,7 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
         return result;
     }
 
-    private void animateSequentialBreak(Player player, List<Block> blocks, ItemStack tool, int delay, int speed, boolean sound, boolean particles, boolean isTree) {
+    private void animateSequentialBreak(Player player, List<Block> blocks, ItemStack tool, int delay, int speed, boolean sound, boolean particles, boolean isTree, boolean playerAutoPickup) {
         new BukkitRunnable() {
             int index = 0;
             int coreBrokenCount = 0;
@@ -357,7 +432,8 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
                     if (index >= blocks.size()) break;
                     
                     Block block = blocks.get(index++);
-                    boolean isLeaf = LEAVES.contains(block.getType());
+                    Material type = block.getType();
+                    boolean isLeaf = LEAVES.contains(type);
 
                     // --- LAVA SAFETY CHECK (Only for Veins) ---
                     if (!isTree && stopAtLava && isTouchingLava(block)) {
@@ -383,12 +459,19 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
                     if (sound) block.getWorld().playSound(block.getLocation(), block.getBlockData().getSoundGroup().getBreakSound(), 0.8f, 1.4f); 
                     if (particles) block.getWorld().spawnParticle(Particle.BLOCK, block.getLocation().add(0.5, 0.5, 0.5), 10, 0.2, 0.2, 0.2, block.getBlockData());
 
-                    if (autoPickup) {
-                        Collection<ItemStack> drops = block.getDrops(tool);
+                    if (playerAutoPickup) {
+                        Collection<ItemStack> drops = block.getDrops(tool, player);
                         for (ItemStack drop : drops) {
-                            HashMap<Integer, ItemStack> left = player.getInventory().addItem(drop);
+                            Map<Integer, ItemStack> left = player.getInventory().addItem(drop);
                             for (ItemStack l : left.values()) {
-                                player.getWorld().dropItemNaturally(block.getLocation(), l);
+                                player.getWorld().dropItemNaturally(player.getLocation(), l);
+                            }
+                        }
+                        // XP Ver
+                        if (!isTree && !isLeaf) {
+                            int exp = getExpAmount(type);
+                            if (exp > 0 && (tool == null || tool.getEnchantmentLevel(org.bukkit.enchantments.Enchantment.SILK_TOUCH) == 0)) {
+                                player.giveExp(exp);
                             }
                         }
                         block.setType(Material.AIR);
@@ -419,6 +502,31 @@ public class VeinTreeBreaker extends JavaPlugin implements Listener, CommandExec
         }.runTaskTimer(this, delay, delay);
     }
     
+    private int getExpAmount(Material type) {
+        switch (type.name()) {
+            case "COAL_ORE":
+            case "DEEPSLATE_COAL_ORE":
+                return (int) (Math.random() * 3);
+            case "NETHER_GOLD_ORE":
+                return (int) (Math.random() * 2);
+            case "DIAMOND_ORE":
+            case "DEEPSLATE_DIAMOND_ORE":
+            case "EMERALD_ORE":
+            case "DEEPSLATE_EMERALD_ORE":
+                return 3 + (int) (Math.random() * 5);
+            case "LAPIS_ORE":
+            case "DEEPSLATE_LAPIS_ORE":
+                return 2 + (int) (Math.random() * 4);
+            case "REDSTONE_ORE":
+            case "DEEPSLATE_REDSTONE_ORE":
+                return 1 + (int) (Math.random() * 5);
+            case "NETHER_QUARTZ_ORE":
+                return 2 + (int) (Math.random() * 4);
+            default:
+                return 0;
+        }
+    }
+
     private boolean isTouchingLava(Block block) {
         for (BlockFace face : BlockFace.values()) {
             if (face == BlockFace.SELF) continue;

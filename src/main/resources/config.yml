@@ -9,6 +9,7 @@ settings:
   allow-creative: false
   default-toggle-state: true
   auto-pickup: true
+  auto-update: true
 
 # =============================================================
 #                 GAMEPLAY BALANCE (OYUN DENGESİ)
